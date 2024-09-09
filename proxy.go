@@ -3,11 +3,10 @@ package main
 import (
 	"context"
 	"io"
-	"net/http"
 	"strings"
 	"syscall"
-	"time"
-
+	"net"
+	"fmt"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -25,7 +24,7 @@ var Log = logging.Logger("libp2p-proxy")
 type ProxyService struct {
 	ctx     context.Context
 	host    host.Host
-	http    *http.Server
+	socks   net.Listener
 	p2pHost string
 }
 
@@ -38,11 +37,9 @@ func NewProxyService(ctx context.Context, h host.Host, p2pHost string) *ProxySer
 // Close terminates this listener. It will no longer handle any
 // incoming streams
 func (p *ProxyService) Close() error {
-	if s := p.http; s != nil {
-		c, cancel := context.WithTimeout(context.Background(), time.Second*10)
-		defer cancel()
-		p.http = nil
-		s.Shutdown(c)
+	fmt.Println("close proxy ", p.socks)
+	if p.socks != nil {
+		p.socks.Close()
 	}
 	return p.host.Close()
 }

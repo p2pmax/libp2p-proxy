@@ -1,8 +1,8 @@
 package main
 
 import (
+	"C"
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -15,12 +15,18 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-func main() {
-	// Parse some flags
-	serverPeerID := flag.String("peer", "", "proxy server peer address")
-	// version := flag.Bool("version", false, "show version info")
-	flag.Parse()
+var proxy1 *ProxyService
 
+func main() {}
+
+//export RunMain
+func RunMain(input *C.char) {
+	fmt.Println("proxy1:", proxy1) // check if it's nil or has a value
+	if proxy1 != nil {
+		proxy1.Close()
+	}
+	serverPeerID := C.GoString(input)
+	fmt.Println("Received string from C:", serverPeerID)
 	service := "p2pmax"
 	user := "user"
 	// Retrieve the secret
@@ -61,7 +67,7 @@ func main() {
 	fmt.Printf("Peer ID: %s\n", host.ID())
 	serverPeer := &peer.AddrInfo{ID: host.ID()}
 
-	serverPeer, err = peer.AddrInfoFromString(*serverPeerID)
+	serverPeer, err = peer.AddrInfoFromString(serverPeerID)
 	if err != nil {
 		Log.Fatal(err)
 	}
@@ -79,11 +85,13 @@ func main() {
 	}
 	cancel()
 	host.ConnManager().Protect(serverPeer.ID, "proxy")
+	proxy1 = NewProxyService(ctx, host, "")
+	go func() {
+		if err := proxy1.Serve("localhost:1082", serverPeer.ID); err != nil {
+			Log.Fatal(err)
+		}
+	}()
 
-	proxy := NewProxyService(ctx, host, "")
-	if err := proxy.Serve("localhost:1082", serverPeer.ID); err != nil {
-		Log.Fatal(err)
-	}
 
 }
 

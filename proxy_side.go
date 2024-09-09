@@ -11,7 +11,7 @@ func (p *ProxyService) Serve(proxyAddr string, remotePeer peer.ID) error {
 	if err != nil {
 		return err
 	}
-
+	p.socks = ln
 	go p.Wait(ln.Close)
 
 	for {
