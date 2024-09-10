@@ -6,7 +6,6 @@ import (
 	"strings"
 	"syscall"
 	"net"
-	"fmt"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -25,11 +24,12 @@ type ProxyService struct {
 	ctx     context.Context
 	host    host.Host
 	socks   net.Listener
-	p2pHost string
+	stop    chan struct{}
 }
 
-func NewProxyService(ctx context.Context, h host.Host, p2pHost string) *ProxyService {
-	ps := &ProxyService{ctx, h, nil, p2pHost}
+func NewProxyService(ctx context.Context, h host.Host) *ProxyService {
+	stop := make(chan struct{})
+	ps := &ProxyService{ctx, h, nil, stop}
 	h.SetStreamHandler(ID, ps.Handler)
 	return ps
 }
@@ -37,7 +37,8 @@ func NewProxyService(ctx context.Context, h host.Host, p2pHost string) *ProxySer
 // Close terminates this listener. It will no longer handle any
 // incoming streams
 func (p *ProxyService) Close() error {
-	fmt.Println("close proxy ", p.socks)
+	// Trigger listener close and stop accepting connections
+	close(p.stop)
 	if p.socks != nil {
 		p.socks.Close()
 	}

@@ -2,28 +2,35 @@ package main
 
 import (
 	"net"
-
+	"fmt"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-func (p *ProxyService) Serve(proxyAddr string, remotePeer peer.ID) error {
-	ln, err := net.Listen("tcp", proxyAddr)
-	if err != nil {
-		return err
-	}
+func (p *ProxyService) Serve(ln net.Listener, remotePeer peer.ID) error {
+
 	p.socks = ln
 	go p.Wait(ln.Close)
 
 	for {
 		conn, err := ln.Accept()
-		if err := p.ctx.Err(); err != nil {
-			return err
+		select {
+		case <-p.stop:
+			// Listener was closed, exit the loop
+			return nil
+		default:
+			if err != nil {
+				// If the listener is closed, log and exit the loop
+				if opErr, ok := err.(*net.OpError); ok && opErr.Err.Error() == "use of closed network connection" {
+					fmt.Println("Listener closed, stopping accept loop")
+					return nil
+				}
+				fmt.Println("Error accepting connection:", err)
+				continue
+			}
+			// Handle the connection
+			go p.sideHandler(conn, remotePeer)
 		}
 
-		if err != nil {
-			return err
-		}
-		go p.sideHandler(conn, remotePeer)
 	}
 }
 

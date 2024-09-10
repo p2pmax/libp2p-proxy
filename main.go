@@ -4,6 +4,7 @@ import (
 	"C"
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -20,7 +21,7 @@ var proxy1 *ProxyService
 func main() {}
 
 //export RunMain
-func RunMain(input *C.char) {
+func RunMain(input *C.char) C.int{
 	fmt.Println("proxy1:", proxy1) // check if it's nil or has a value
 	if proxy1 != nil {
 		proxy1.Close()
@@ -37,7 +38,7 @@ func RunMain(input *C.char) {
 		privKey, _, err := GeneratePeerKey()
 		if err != nil {
 			fmt.Println("Error GeneratePeerKey", err)
-			return
+			return C.int(-1)
 		}
 		// save it into keychain
 		keyring.Set(service, user, privKey)
@@ -61,7 +62,8 @@ func RunMain(input *C.char) {
 	)
 	host, err := libp2p.New(opts...)
 	if err != nil {
-		Log.Fatal(err)
+		Log.Errorf("Failed to connect to server: %v", err)
+		return C.int(-1) // or handle the error as needed
 	}
 
 	fmt.Printf("Peer ID: %s\n", host.ID())
@@ -69,30 +71,40 @@ func RunMain(input *C.char) {
 
 	serverPeer, err = peer.AddrInfoFromString(serverPeerID)
 	if err != nil {
-		Log.Fatal(err)
+		Log.Errorf("Failed to connect to server: %v", err)
+		return C.int(-1) // or handle the error as needed
+
 	}
 
 	// host.Peerstore().AddAddrs(serverPeer.ID, serverPeer.Addrs, peerstore.PermanentAddrTTL)
 	ctxt, cancel := context.WithTimeout(ctx, time.Second*5)
 	if err = host.Connect(ctxt, *serverPeer); err != nil {
-		Log.Fatal(err)
+		Log.Errorf("Failed to connect to server: %v", err)
+		return C.int(-1)
 	}
 	res := <-ping.Ping(ctxt, host, serverPeer.ID)
 	if res.Error != nil {
-		Log.Fatalf("ping error: %v", res.Error)
+		Log.Errorf("ping error: %v", res.Error)
+		return C.int(-1)
 	} else {
 		Log.Infof("ping RTT: %s", res.RTT)
 	}
 	cancel()
 	host.ConnManager().Protect(serverPeer.ID, "proxy")
-	proxy1 = NewProxyService(ctx, host, "")
+	proxy1 = NewProxyService(ctx, host)
+	ln, err := net.Listen("tcp", ":1082")
+	if err != nil {
+		return C.int(-1)
+	}
 	go func() {
-		if err := proxy1.Serve("localhost:1082", serverPeer.ID); err != nil {
-			Log.Fatal(err)
+		if err := proxy1.Serve(ln, serverPeer.ID); err != nil {
+			Log.Errorf("Failed to connect to server: %v", err)
 		}
 	}()
 
+	port := ln.Addr().(*net.TCPAddr).Port
 
+	return C.int(port)
 }
 
 func ContextWithSignal(ctx context.Context) context.Context {
